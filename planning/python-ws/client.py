@@ -1,15 +1,43 @@
 import asyncio
-import websockets
+import sys
+from websockets.asyncio.client import connect
+from shared import WEBSOCKET_HOSTNAME, WEBSOCKET_PORT, WEBSOCKET_URL
+from prompt_toolkit import PromptSession
+from prompt_toolkit.patch_stdout import patch_stdout
 
-# Function to handle the chat client
-async def chat():
-    async with websockets.connect('ws://localhost:12345') as websocket:
+class Client:
+    uuid = None
+    history = []
+
+    @staticmethod
+    async def start(websocket):
+        # Wait until server assigns client UUID.
+        Client.uuid = await websocket.recv()
+        print(f"Joined server as Client {Client.uuid}")
+
+        # Run async tasks.
+        await asyncio.gather(
+            Client.chat(websocket),
+            Client.display(websocket)
+        )
+
+    @staticmethod
+    async def chat(websocket):
+        session = PromptSession(f"Client {Client.uuid}: ")
+        with patch_stdout():  # Allows other prints while typing.
+            while True:
+                text = await session.prompt_async()
+                await websocket.send(f"Client {Client.uuid}: {text}")
+
+    @staticmethod
+    async def display(websocket):
         while True:
-            message = input("Enter message: ")
-            await websocket.send(message)
-            response = await websocket.recv()
-            print(f"Received: {response}")
+            message = await websocket.recv()
+            print(message)
 
-# Run the client
+async def main():
+    async with connect(WEBSOCKET_URL) as websocket:
+        await Client.start(websocket)
+
 if __name__ == "__main__":
-    asyncio.run(chat())
+    asyncio.run(main())
